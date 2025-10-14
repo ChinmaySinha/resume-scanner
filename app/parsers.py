@@ -7,6 +7,7 @@ from io import BytesIO
 from typing import Dict, Any, List
 from pdfminer.high_level import extract_text as extract_pdf_text
 import spacy
+from spacy.matcher import PhraseMatcher
 from transformers import pipeline
 from app.config import settings
 from . import skills as skills_module
@@ -102,13 +103,34 @@ def extract_entities_with_bert(text: str, max_chunk: int = 2000) -> List[Dict[st
             uniq.append(e)
     return uniq
 
-def extract_skills_from_taxonomy(text: str, taxonomy: List[str]) -> List[Dict[str, Any]]:
+def extract_skills_from_taxonomy(text: str, taxonomy: Dict[str, List[str]]) -> List[Dict[str, Any]]:
+    nlp = get_spacy()
+    matcher = PhraseMatcher(nlp.vocab)
+
+    # Create patterns for PhraseMatcher
+    patterns = {}
+    for canonical, variations in taxonomy.items():
+        patterns[canonical] = [nlp(variation) for variation in variations]
+
+    for canonical, pattern_list in patterns.items():
+        matcher.add(canonical, None, *pattern_list)
+
+    doc = nlp(text)
+    matches = matcher(doc)
+
     found = []
-    lower = text.lower()
-    for skill in taxonomy:
-        pattern = r"\b" + re.escape(skill.lower()) + r"\b"
-        if re.search(pattern, lower):
-            found.append({"skill": skill, "match": skill, "confidence": 1.0})
+    seen_canonical_skills = set()
+
+    for match_id, start, end in matches:
+        canonical_skill = nlp.vocab.strings[match_id]
+        if canonical_skill not in seen_canonical_skills:
+            found.append({
+                "skill": canonical_skill,
+                "match": doc[start:end].text,
+                "confidence": 1.0
+            })
+            seen_canonical_skills.add(canonical_skill)
+
     return found
 
 def extract_sections(text: str) -> Dict[str, str]:

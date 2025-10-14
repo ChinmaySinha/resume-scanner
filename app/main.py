@@ -3,12 +3,10 @@ import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import streamlit as st
-from app.parsers import extract_text_from_bytes, parse_basic_fields
-from app.embeddings import embed_text, embed_list, get_embedding_model
-from app.skills import SKILLS
+from app.parsers import parse_resume_text_from_bytes
+from app.embeddings import get_embedding_model
 from app.scoring import score_with_llm, score_with_cosine
 from app.config import settings
-import numpy as np
 
 st.set_page_config(page_title="Single Resume Screener (modular)", layout="wide")
 st.title("Single-Resume Screener — Modular (LLM + Cosine fallback)")
@@ -44,22 +42,18 @@ if process:
         st.error("Please paste a job description.")
     else:
         data = uploaded.read()
-        text = extract_text_from_bytes(data, uploaded.name)
+        parsed_resume = parse_resume_text_from_bytes(data, uploaded.name)
+        text = parsed_resume.get("raw")
         if not text or not text.strip():
             st.error("Could not extract text from the file. Try a plain .txt resume.")
         else:
-            parsed = parse_basic_fields(text)
+            basic_fields = parsed_resume.get("basic")
             parsed_box.subheader("Parsed basic fields")
-            parsed_box.json(parsed)
+            parsed_box.json(basic_fields)
 
-            model = get_embedding_model()
-            skill_embs = embed_list(SKILLS)
-            resume_vec = embed_text(text)
-            sims = (skill_embs @ resume_vec)
-            idx = np.argsort(-sims)[:settings.TOP_K_SKILLS]
-            top_skills = [{"skill": SKILLS[i], "score": float(sims[i])} for i in idx]
-            skills_box.subheader("Top matched skills (from taxonomy)")
-            skills_box.table(top_skills)
+            extracted_skills = parsed_resume.get("skills")
+            skills_box.subheader("Extracted skills")
+            skills_box.table(extracted_skills)
 
             with st.spinner("Calling LLM for scoring (can be slow on CPU)..."):
                 llm_res = score_with_llm(job_title, job_desc, text)
