@@ -1,0 +1,10 @@
+John Doe
+Software Engineer
+
+Skills:
+- Python
+- Java
+- SQL
+- React
+- Docker
+- AWS
